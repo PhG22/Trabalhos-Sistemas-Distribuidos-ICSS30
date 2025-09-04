@@ -1,0 +1,13 @@
+04/09/2025 - 18:48
+
+- Solução anterior movida para a pasta "BAK"
+- Implementado Crypto Utilidades
+- Implementado MS Lance
+- Implementado MS Notificação
+- Refatorado Cliente
+- Refatorado MS Leilão
+- lib de crypto alterada de picryptodome para cryptography
+
+TO-DO LIST:
+- Debuggar o projeto
+- Arrumar bugs encontrados

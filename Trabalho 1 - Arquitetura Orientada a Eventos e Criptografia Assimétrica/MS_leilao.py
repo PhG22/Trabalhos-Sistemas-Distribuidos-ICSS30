@@ -1,109 +1,74 @@
 import pika
-import sys
-from datetime import datetime
 import json
+import time
+from datetime import datetime, timedelta
 
+# Lista de leilões pré-configurada
+# Os horários são definidos dinamicamente com base no momento em que o script é iniciado.
+LEILOES = [
+            {"id": 1,
+            "descricao": "1155 do ET",
+            "inicio": datetime.now() + timedelta(seconds= 3),
+            "fim": datetime.now() + timedelta(minutes = 2, seconds = 3),
+            "status": "pendente"},
+            {"id": 2,
+            "descricao": "Carta MTG: Tifa, Martial Artist (Surge Foil)",
+            "inicio": datetime.now() + timedelta(seconds= 3.5),
+            "fim": datetime.now() + timedelta(minutes = 2.1, seconds= 3.5),
+            "status": "pendente"}
+            ]
 
-auctions = [
-    {
-        "id": "auction_1",
-        "descrição": "Leilão de uma cara de magic da coleção do final fantasy -> Buster Sword",
-        "início": datetime(2025, 9, 4, 00, 00, 00),
-        "fim": datetime(2025, 9, 5, 00, 00, 00),
-        "lance_minimo": 100,
-    },
-    {
-        "id": "auction_2",
-        "descrição": "Leilão de uma cara de magic da coleção do final fantasy -> Tifa Lockhart",
-        "início": datetime(2025, 9, 4, 00, 00, 00),
-        "fim": datetime(2025, 9, 5, 00, 00, 00),
-        "lance_minimo": 200,
-    },
-    {
-        "id": "auction_3",
-        "descrição": "Leilão de uma cara de magic da coleção do final fantasy -> Cloud Strife",
-        "início": datetime(2025, 9, 4, 00, 00, 00),
-        "fim": datetime(2025, 9, 5, 00, 00, 00),
-        "lance_minimo": 300,
-    },
-]
+def main():
+    connection = pika.BlockingConnection(pika.ConnectionParameters('localhost'))
+    channel = connection.channel()
 
-auctions_started = []
+    # Declara um exchange do tipo fanout para transmitir os anúncios de início de leilão.
+    # Isso garante que todos os clientes conectados recebam a notificação.
+    channel.exchange_declare(exchange='leilao_iniciado_exchange', exchange_type='fanout')
+    
+    # A fila para finalizar leilões continua sendo ponto-a-ponto, pois apenas o MS Lance precisa recebê-la.
+    channel.queue_declare(queue='leilao_finalizado')
 
-auctions_finished = []
+    print("--- MS Leilão iniciado. Monitorando horários... ---")
 
-
-def callback(ch, method, properties, body):
-    print(f" [x] {method.routing_key}:{body}")
-
-
-class MSLeilao:
-    def __init__(self):
-        connection = pika.BlockingConnection(
-            pika.ConnectionParameters(host="localhost")
-        )
-
-        # fila leilao_iniciado
-        self.channel_iniciado = connection.channel()
-
-        self.channel_iniciado.exchange_declare(
-            exchange="leilao_iniciado", exchange_type="direct"
-        )
-
-        result_iniciado = self.channel_iniciado.queue_declare(
-            queue="leilao_iniciado", exclusive=True
-        )
-        queue_name_iniciado = result_iniciado.method.queue
-        self.channel_iniciado.queue_bind(
-            exchange="leilao_iniciado", queue=queue_name_iniciado, routing_key="iniciado"
-        )
-
-        self.channel_iniciado.basic_publish(
-            exchange="", routing_key="", body=json.dumps(auctions_started)
-        )
-
-        # fila leilao_finalizado
-        self.channel_finalizado = connection.channel()
-
-        self.channel_finalizado.exchange_declare(
-            exchange="leilao_finalizado", exchange_type="direct"
-        )
-
-        result_finalizado = self.channel_finalizado.queue_declare(
-            queue="leilao_finalizado", exclusive=True
-        )
-        queue_name_finalizado = result_finalizado.method.queue
-        self.channel_finalizado.queue_bind(
-            exchange="leilao_finalizado", queue=queue_name_finalizado, routing_key="finalizado"
-        )
-
-        self.channel_finalizado.basic_publish(
-            exchange="", routing_key="", body=json.dumps(auctions_finished)
-        )
-
-
-    def start_auction(self):
+    while True:
         now = datetime.now()
-        for auction in auctions:
-            if auction not in auctions_started:
-                if now > auction.get("inicio") and now < auction.get("fim"):
-                    auctions_started.append(auction)
+        for leilao in LEILOES:
+            # Inicia o leilão se o tempo for atingido e estiver pendente
+            if leilao["status"] == "pendente" and now >= leilao["inicio"]:
+                leilao["status"] = "ativo"
+                
+                message = {
+                    "id": leilao["id"],
+                    "descricao": leilao["descricao"],
+                    "inicio": leilao["inicio"].isoformat(),
+                    "fim": leilao["fim"].isoformat()
+                }
+                
+                # Publica a mensagem no exchange, não em uma fila específica.
+                # O exchange se encarregará de distribuir para todos os consumidores (clientes).
+                channel.basic_publish(exchange='leilao_iniciado_exchange',
+                                      routing_key='', # routing_key é ignorada em exchanges do tipo fanout
+                                      body=json.dumps(message))
+                print(f" Leilão {leilao['id']} INICIADO: {leilao['descricao']}")
 
-        self.channel_iniciado.basic_publish(
-            exchange="leilao_iniciado",
-            routing_key="iniciado",
-            body=json.dumps(auctions_started),
-        )
+            # Finaliza o leilão se o tempo expirar e estiver ativo
+            elif leilao["status"] == "ativo" and now >= leilao["fim"]:
+                leilao["status"] = "encerrado"
+                
+                message = {"id": leilao["id"]}
+                
+                channel.basic_publish(exchange='',
+                                      routing_key='leilao_finalizado',
+                                      body=json.dumps(message))
+                print(f" Leilão {leilao['id']} FINALIZADO.")
 
-    def finish_auction(self):
-        now = datetime.now()
-        for auction in auctions:
-            if auction not in auctions_finished:
-                if now > auction.get("fim"):
-                    auctions_finished.append(auction)
+        time.sleep(1) # Verifica a cada segundo
 
-        self.channel_iniciado.basic_publish(
-            exchange="leilao_iniciado",
-            routing_key="finalizado",
-            body=json.dumps(auctions_finished),
-        )
+    connection.close()
+
+if __name__ == '__main__':
+    try:
+        main()
+    except KeyboardInterrupt:
+        print('MS Leilão encerrado.')
