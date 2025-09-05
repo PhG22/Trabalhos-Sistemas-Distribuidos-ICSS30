@@ -5,12 +5,15 @@ def main():
     connection = pika.BlockingConnection(pika.ConnectionParameters('localhost'))
     channel = connection.channel()
 
+    # Declara o exchange do tipo 'direct' que será usado para rotear as notificações
+    channel.exchange_declare(exchange='notificacoes_exchange', exchange_type='direct')
+
     # Filas que este serviço consome
     channel.queue_declare(queue='lance_validado')
     channel.queue_declare(queue='leilao_vencedor')
 
     def callback_router(ch, method, properties, body):
-        """Callback genérico para rotear mensagens."""
+        """Callback que consome eventos e os re-publica no exchange com a routing key correta."""
         try:
             data = json.loads(body)
             leilao_id = data.get('leilao_id')
@@ -20,18 +23,17 @@ def main():
                 ch.basic_ack(delivery_tag=method.delivery_tag)
                 return
 
-            # Nome da fila de destino é dinâmico
+            # A routing key é semanticamente significativa (ex: 'leilao_1')
             routing_key = f'leilao_{leilao_id}'
             
-            # Declara a fila de destino para garantir que ela exista
-            channel.queue_declare(queue=routing_key)
+            # Publica a mensagem no exchange, delegando o roteamento ao broker
+            channel.basic_publish(
+                exchange='notificacoes_exchange',
+                routing_key=routing_key,
+                body=body
+            )
             
-            # Re-publica a mensagem original na fila específica
-            channel.basic_publish(exchange='',
-                                  routing_key=routing_key,
-                                  body=body)
-            
-            print(f" Mensagem do tipo '{method.routing_key}' para a fila '{routing_key}'")
+            print(f" Mensagem do tipo '{method.routing_key}' roteada para o exchange com a chave '{routing_key}'")
 
         except json.JSONDecodeError:
             print(f" Falha ao decodificar JSON: {body}")

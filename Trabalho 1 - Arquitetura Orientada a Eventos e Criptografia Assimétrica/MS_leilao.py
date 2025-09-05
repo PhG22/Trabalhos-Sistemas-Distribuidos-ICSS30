@@ -10,12 +10,14 @@ LEILOES = [
             "descricao": "1155 do ET",
             "inicio": datetime.now() + timedelta(seconds= 3),
             "fim": datetime.now() + timedelta(minutes = 2, seconds = 3),
-            "status": "pendente"},
+            "status": "pendente",
+            "lance_minimo": 10.0},
             {"id": 2,
             "descricao": "Carta MTG: Tifa, Martial Artist (Surge Foil)",
             "inicio": datetime.now() + timedelta(seconds= 3.5),
             "fim": datetime.now() + timedelta(minutes = 2.1, seconds= 3.5),
-            "status": "pendente"}
+            "status": "pendente",
+            "lance_minimo": 100.0}
             ]
 
 def main():
@@ -23,10 +25,10 @@ def main():
     channel = connection.channel()
 
     # Declara um exchange do tipo fanout para transmitir os anúncios de início de leilão.
-    # Isso garante que todos os clientes conectados recebam a notificação.
+    # Isso garante que todos os clientes e serviços interessados recebam a notificação.
     channel.exchange_declare(exchange='leilao_iniciado_exchange', exchange_type='fanout')
     
-    # A fila para finalizar leilões continua sendo ponto-a-ponto, pois apenas o MS Lance precisa recebê-la.
+    # A fila para finalizar leilões continua sendo ponto-a-ponto.
     channel.queue_declare(queue='leilao_finalizado')
 
     print("--- MS Leilão iniciado. Monitorando horários... ---")
@@ -42,15 +44,16 @@ def main():
                     "id": leilao["id"],
                     "descricao": leilao["descricao"],
                     "inicio": leilao["inicio"].isoformat(),
-                    "fim": leilao["fim"].isoformat()
+                    "fim": leilao["fim"].isoformat(),
+                    "lance_minimo": leilao["lance_minimo"]
                 }
                 
                 # Publica a mensagem no exchange, não em uma fila específica.
-                # O exchange se encarregará de distribuir para todos os consumidores (clientes).
+                # O exchange se encarregará de distribuir para todos os consumidores (clientes e MS Lance).
                 channel.basic_publish(exchange='leilao_iniciado_exchange',
                                       routing_key='', # routing_key é ignorada em exchanges do tipo fanout
                                       body=json.dumps(message))
-                print(f" Leilão {leilao['id']} INICIADO: {leilao['descricao']}")
+                print(f" Leilão {leilao['id']} INICIADO: {leilao['descricao']} (Lance Mínimo: R${leilao['lance_minimo']:.2f})")
 
             # Finaliza o leilão se o tempo expirar e estiver ativo
             elif leilao["status"] == "ativo" and now >= leilao["fim"]:

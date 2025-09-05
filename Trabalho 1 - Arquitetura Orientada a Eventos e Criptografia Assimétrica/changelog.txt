@@ -1,3 +1,21 @@
+05/09/2025 - 18:00
+- Projeto aparentemente finalizado
+- Adicionado Lance mínimo
+- Adicionado feedback de lance inválido
+- Bugfixes
+
+TO-DO LIST:
+- Debbugar o projeto
+- Criar classes
+- Implementar top level com as classes criadas
+
+OBS: Ordem de execução dos Scripts.
+
+1- ms_lance.py
+2- ms_notificação.py
+3- cliente.py (um pra cada cliente desejado)
+4- ms_leilao.py
+
 04/09/2025 - 18:48
 
 - Solução anterior movida para a pasta "BAK"
