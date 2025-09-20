@@ -45,6 +45,9 @@ class Peer:
         # Evento para sinalizar que o peer recebeu todas as respostas necessárias para entrar na SC.
         self.permission_granted = threading.Event()
 
+        # Dicionário para rastrear os timers de requisição individuais.
+        self.request_timers = {}
+
         print(f"[{self.name}] Peer inicializado no estado {self.state}.")
 
     # --- Métodos do Algoritmo de Ricart & Agrawala ---
@@ -60,6 +63,8 @@ class Peer:
             self.request_timestamp = self.logical_clock
             self.reply_count = 0
             self.permission_granted.clear()
+            # Limpa timers de requisições anteriores.
+            self.request_timers.clear()
             
             print(f"[{self.name}] Estado: {self.state}. Timestamp da requisição: {self.request_timestamp}")
 
@@ -78,6 +83,7 @@ class Peer:
         for peer_name, peer_uri in peers_to_request:
             # Inicia um temporizador para cada requisição para detectar falhas de resposta.
             timer = threading.Timer(REQUEST_TIMEOUT, self._handle_request_timeout, args=[peer_name])
+            self.request_timers[peer_name] = timer
             timer.start()
             
             try:
@@ -100,7 +106,8 @@ class Peer:
         success = self.permission_granted.wait(timeout=timeout_value)
         
         if success:
-            self._enter_critical_section()
+            with self.state_lock:
+                self._enter_critical_section()
         else:
             print(f"[{self.name}] Timeout geral ao esperar por permissões. Abortando requisição.")
             with self.state_lock:
@@ -114,6 +121,10 @@ class Peer:
         with self.state_lock:
             if self.state!= 'WANTED':
                 return # Ignora respostas se não estiver mais esperando
+
+            if sender_name in self.request_timers:
+                timer = self.request_timers.pop(sender_name)
+                timer.cancel()
 
             self.reply_count += 1
             print(f"[{self.name}] Resposta recebida de {sender_name}. Total de respostas: {self.reply_count}/{len(self.active_peers)}")
@@ -147,27 +158,42 @@ class Peer:
             # 1. Eu estou na SC ('HELD').
             # 2. Eu quero entrar na SC ('WANTED') e minha requisição tem maior prioridade
             #    (timestamp menor, ou timestamp igual e nome lexicograficamente menor).
-            if should_defer:
-                print(f"[{self.name}] Adiando resposta para {requester_name}. Meu estado: {self.state}, Meu TS: {self.request_timestamp}")
-                self.request_queue.append((timestamp, requester_name))
-            else:
-                print(f"[{self.name}] Enviando resposta imediata para {requester_name}.")
-                try:
-                    # Cria um proxy temporário para a chamada de resposta.
-                    requester_uri = self.active_peers[requester_name]
-                    with Pyro5.api.Proxy(requester_uri) as requester_proxy:
+            try:
+                # Cria um proxy temporário para a chamada de resposta.
+                requester_uri = self.active_peers[requester_name]
+                with Pyro5.api.Proxy(requester_uri) as requester_proxy:
+                    if should_defer:
+                        print(f"[{self.name}] Adiando resposta para {requester_name}. Meu estado: {self.state}, Meu TS: {self.request_timestamp}")
+                        self.request_queue.append((timestamp, requester_name))
+                        requester_proxy.receive_deferral(self.name)
+                    else:
+                        print(f"[{self.name}] Enviando resposta imediata para {requester_name}.")
                         requester_proxy.handle_reply(self.name)
-                except (KeyError, Pyro5.errors.CommunicationError):
-                    # O requisitante pode ter falhado nesse meio tempo.
-                    print(f"[{self.name}] Falha ao enviar resposta para {requester_name}. Pode ter falhado.")
-                    self._remove_failed_peer(requester_name)
+            except (KeyError, Pyro5.errors.CommunicationError):
+                # O requisitante pode ter falhado nesse meio tempo.
+                print(f"[{self.name}] Falha ao enviar resposta para {requester_name}. Pode ter falhado.")
+                self._remove_failed_peer(requester_name)
+
+    @Pyro5.api.oneway
+    def receive_deferral(self, sender_name):
+        """
+        Método remoto para receber uma mensagem de adiamento (DEFER).
+        """
+        with self.state_lock:
+            if self.state!= 'WANTED':
+                return
+            
+            print(f"[{self.name}] Resposta DEFER recebida de {sender_name}. Aguardando permissão futura.")
+            # Cancela o timer, pois sabemos que o peer está vivo.
+            if sender_name in self.request_timers:
+                timer = self.request_timers.pop(sender_name)
+                timer.cancel()
 
     def _enter_critical_section(self):
         """
         Lógica para entrar e permanecer na Seção Crítica.
         """
-        with self.state_lock:
-            self.state = 'HELD'
+        self.state = 'HELD'
         
         print(f"\n>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>")
         print(f"[{self.name}] ENTROU NA SEÇÃO CRÍTICA. Estado: {self.state}")
@@ -249,7 +275,7 @@ class Peer:
             time.sleep(HEARTBEAT_INTERVAL) 
             with self.state_lock:
                 current_time = time.time()
-                failed_peers = []
+                failed_peers = [] # Implementar lógica de população dos peers falhos.
 
                 for peer_name in failed_peers:
                     print(f"[{self.name}] Timeout de heartbeat de {peer_name}. Considerado falho.")
