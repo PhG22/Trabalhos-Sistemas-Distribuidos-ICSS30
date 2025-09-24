@@ -13,6 +13,12 @@ from constants import (
 # Define o serializador a ser usado pelo PyRO. 'serpent' é o padrão e recomendado.
 Pyro5.config.SERIALIZER = "serpent"
 
+# Define um timeout global para chamadas de rede.
+# Isso evita que a thread de heartbeat bloqueie indefinidamente ao tentar se
+# comunicar com um peer que falhou abruptamente. O valor deve ser menor
+# que o HEARTBEAT_INTERVAL.
+Pyro5.config.COMMTIMEOUT = 0.8
+
 @Pyro5.api.expose
 @Pyro5.api.behavior(instance_mode="single")
 class Peer:
@@ -47,6 +53,8 @@ class Peer:
 
         # Dicionário para rastrear os timers de requisição individuais.
         self.request_timers = {}
+
+        self.daemon = None # Referência ao daemon para o shutdown
 
         print(f"[{self.name}] Peer inicializado no estado {self.state}.")
 
@@ -95,6 +103,8 @@ class Peer:
                 with self.state_lock:
                     self._remove_failed_peer(peer_name)
                 timer.cancel()
+            except Exception as e:
+                print(f'Erro Inesperado {e}')
 
         # Aguardar por (N-1) respostas
         print(f"[{self.name}] Aguardando {len(self.active_peers)} respostas...")
@@ -173,6 +183,8 @@ class Peer:
                 # O requisitante pode ter falhado nesse meio tempo.
                 print(f"[{self.name}] Falha ao enviar resposta para {requester_name}. Pode ter falhado.")
                 self._remove_failed_peer(requester_name)
+            except Exception as e:
+                print(f'Erro Inesperado {e}')
 
     @Pyro5.api.oneway
     def receive_deferral(self, sender_name):
@@ -234,6 +246,8 @@ class Peer:
                     except (KeyError, Pyro5.errors.CommunicationError):
                         print(f"[{self.name}] Falha ao enviar resposta pendente para {peer_name}.")
                         self._remove_failed_peer(peer_name)
+                    except Exception as e:
+                        print(f'Erro Inesperado {e}')
             
             print(f"<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<\n")
 
@@ -247,7 +261,10 @@ class Peer:
         with self.state_lock:
             # Apenas atualiza o timestamp, não precisa de proxy.
             if sender_name in self.active_peers:
+                #print(f"Atualizando last heartbeat. Sender: {sender_name}")
                 self.last_heartbeat[sender_name] = time.time()
+            else:
+                print("Sender name não encontrado na lista")
 
     def _heartbeat_sender_thread(self):
         """
@@ -265,21 +282,37 @@ class Peer:
                     with Pyro5.api.Proxy(peer_uri) as peer_proxy:
                         peer_proxy.receive_heartbeat(self.name)
                 except Pyro5.errors.CommunicationError:
-                    print(f"[{self.name}] Falha de heartbeat para {peer_name}. Será removido pelo detector.")
+                    print(f"[{self.name}] Falha de heartbeat para {peer_name}. Será removido caso estoure o timeout.")
+                except Exception as e:
+                    print(f'Erro Inesperado {e}')
     
     def _failure_detector_thread(self):
         """
         Thread que verifica periodicamente se algum peer falhou (não enviou heartbeat).
         """
         while True:
-            time.sleep(HEARTBEAT_INTERVAL) 
+            time.sleep(HEARTBEAT_TIMEOUT / 2) # Verifica com mais frequência
             with self.state_lock:
                 current_time = time.time()
-                failed_peers = [] # Implementar lógica de população dos peers falhos.
+                # [MELHORIA] Itera sobre uma cópia para ser mais seguro.
+                active_peer_names = list(self.active_peers.keys())
+                failed_peers = []
+
+                for peer_name in active_peer_names:
+                    # [MELHORIA] Usa .get() para evitar KeyError se um peer for adicionado
+                    # e seu heartbeat ainda não foi registrado.
+                    last_seen = self.last_heartbeat.get(peer_name, 0)
+                    if (current_time - last_seen) > HEARTBEAT_TIMEOUT:
+                        failed_peers.append(peer_name)
 
                 for peer_name in failed_peers:
                     print(f"[{self.name}] Timeout de heartbeat de {peer_name}. Considerado falho.")
                     self._remove_failed_peer(peer_name)
+                    
+                    # Se estávamos esperando uma resposta desse peer, precisamos reavaliar
+                    if self.state == 'WANTED' and self.active_peers and self.reply_count == len(self.active_peers):
+                        print(f"[{self.name}] Peer falho era o último necessário. Concedendo permissão para SC.")
+                        self.permission_granted.set()
 
     def _handle_request_timeout(self, peer_name):
         """
@@ -336,6 +369,8 @@ class Peer:
             except Exception as e:
                 print(f"[{self.name}] Falha ao iniciar o Servidor de Nomes: {e}")
                 sys.exit(1)
+        except Exception as e:
+                print(f'Erro Inesperado {e}')
 
         # Registra este peer no servidor de nomes.
         ns.register(self.name, uri)
@@ -376,37 +411,72 @@ class Peer:
         
         print(f"[{self.name}] Conexão inicial completa. Peers ativos: {list(self.active_peers.keys())}")
 
+    def print_status(self):
+        """
+        Imprime o estado atual do peer de forma formatada e segura.
+        """
+        with self.state_lock:
+            # Ordena a fila de requisições para uma exibição consistente
+            sorted_queue = sorted(self.request_queue)
+            formatted_queue = [f"(TS: {ts}, Peer: {p_name})" for ts, p_name in sorted_queue]
+            
+            print("\n" + "-"*20 + f" STATUS ATUAL: {self.name} " + "-"*20)
+            print(f"  Estado        : {self.state}")
+            print(f"  Relógio Lógico : {self.logical_clock}")
+            print(f"  Peers Ativos  : {list(self.active_peers.keys())}")
+            print(f"  Fila de Req.  : {formatted_queue if formatted_queue else 'Vazia'}")
+            print("-"*(42 + len(self.name)) + "\n")
+
+    def shutdown(self):
+        # [MELHORIA] Desligamento limpo.
+        print(f"\n[{self.name}] Desligando...")
+        if self.daemon:
+            self.daemon.shutdown()
+        try:
+            ns = Pyro5.api.locate_ns(host=NAME_SERVER_HOST, port=NAME_SERVER_PORT)
+            ns.remove(self.name)
+            print(f"[{self.name}] Desregistrado do Servidor de Nomes.")
+        except Pyro5.errors.PyroError:
+            # Ignora erros de comunicação/lookup durante o shutdown
+            pass
+
     def run(self):
         """
         Inicia os threads de background e o loop de interação com o usuário.
         """
         self.setup_pyro()
         
-        # Inicia os threads para heartbeat e detecção de falhas.
         hb_sender = threading.Thread(target=self._heartbeat_sender_thread, daemon=True)
-        hb_sender.start()
-        
         failure_detector = threading.Thread(target=self._failure_detector_thread, daemon=True)
+        hb_sender.start()
         failure_detector.start()
-
-        print("\n" + "="*50)
+        
+        print("\n" + "="*60)
         print(f"Peer {self.name} está totalmente operacional.")
-        print("Pressione [Enter] para solicitar acesso à Seção Crítica.")
-        print("Pressione [Ctrl+C] para sair.")
-        print("="*50 + "\n")
+        print("  - Pressione [Enter] para solicitar acesso à Seção Crítica.")
+        print("  - Digite 'status' e pressione [Enter] para ver o estado atual.")
+        print("  - Pressione [Ctrl+C] para sair.")
+        print("="*60 + "\n")
 
         try:
             while True:
-                input() # Aguarda o usuário pressionar Enter.
-                with self.state_lock:
-                    is_released = self.state == 'RELEASED'
+                command = input()
                 
-                if is_released:
-                    self.request_critical_section()
+                if command.strip().lower() == 'status':
+                    self.print_status()
+                elif command.strip() == '':
+                    with self.state_lock:
+                        is_released = self.state == 'RELEASED'
+                    
+                    if is_released:
+                        self.request_critical_section()
+                    else:
+                        print(f"[{self.name}] Ação ignorada. Estado atual: {self.state}")
                 else:
-                    print(f"[{self.name}] Ação ignorada. Estado atual: {self.state}")
-        except KeyboardInterrupt:
-            print(f"\n[{self.name}] Encerrando...")
+                    print(f"[{self.name}] Comando desconhecido: '{command}'")
+
+        except (KeyboardInterrupt, EOFError):
+            self.shutdown()
 
 def main():
     if len(sys.argv) < 2 or sys.argv[1] not in PEER_NAMES:
@@ -420,3 +490,5 @@ def main():
 
 if __name__ == "__main__":
     main()
+
+    
