@@ -8,17 +8,15 @@ from fastapi import FastAPI, Request, HTTPException
 from pydantic import BaseModel
 from typing import Dict
 
-# Porta em que este MS (Pagamento) rodará
 PORTA_ATUAL = 8003
-# URL do Sistema de Pagamento Externo
 URL_SISTEMA_EXTERNO = "http://localhost:8004"
-# URL do nosso próprio webhook, para informar ao sistema externo
+# URL informado ao sistema externo (Webhook)
 URL_WEBHOOK = f"http://localhost:{PORTA_ATUAL}/webhook_pagamento"
 
 
 # --- Modelos de Dados (Pydantic) ---
 
-# Modelo para o webhook que receberemos do sistema externo
+# Modelo para o webhook que recebemos do sistema externo
 class WebhookPayload(BaseModel):
     transacao_id: str
     leilao_id: int
@@ -29,11 +27,15 @@ class WebhookPayload(BaseModel):
 
 # --- Microsserviço de Pagamento ---
 class MSPagamento:
+    """
+    Classe principal do microsserviço de Pagamento.
+    Orquestra o fluxo de pagamento com um sistema externo.
+    """
     def __init__(self, host="localhost"):
         self.host = host
         
-        # O cliente HTTP para fazer requisições REST ao sistema externo
-        # Usamos um cliente síncrono aqui por simplicidade na thread do Pika
+        # Cliente HTTP síncrono para fazer requisições REST ao sistema externo
+        # (Usado na thread do Pika, por isso síncrono)
         self.http_client = httpx.Client()
 
         try:
@@ -43,8 +45,9 @@ class MSPagamento:
             self.channel = self.connection.channel()
 
             # --- Configuração de Filas (RabbitMQ) ---
-
-            # Publica
+            # (O consumo de 'leilao_vencedor' é configurado em start_consuming)
+            
+            # Filas que este MS publica
             self.channel.queue_declare(queue="link_pagamento")
             self.channel.queue_declare(queue="status_pagamento")
             
@@ -60,7 +63,6 @@ class MSPagamento:
 
     def _publish_message(self, routing_key: str, body: dict):
         """Função auxiliar para publicar mensagens JSON."""
-        # Garante que o canal está disponível (pode ser chamado pela thread do FastAPI)
         self.channel.basic_publish(
             exchange="",
             routing_key=routing_key,
@@ -69,7 +71,10 @@ class MSPagamento:
         print(f" [MS_Pagamento] Publicado '{routing_key}': {body}")
 
     def _request_payment_link(self, vencedor_data: dict):
-        """Faz a requisição REST para o sistema externo, com retentativas."""
+        """
+        Faz a requisição REST para o sistema externo, com retentativas,
+        para criar um link de pagamento.
+        """
         
         leilao_id = vencedor_data['leilao_id']
         valor = vencedor_data['valor']
@@ -79,12 +84,13 @@ class MSPagamento:
             "leilao_id": leilao_id,
             "valor": valor,
             "cliente_id": vencedor_id,
-            "webhook_url": URL_WEBHOOK
+            "webhook_url": URL_WEBHOOK # Informa ao sistema externo como nos contatar
         }
         
         print(f" [MS_Pagamento] Solicitando link de pagamento para leilão {leilao_id}...")
         
         # --- LÓGICA DE RETENTATIVA ---
+        # (Importante caso o MS Pagamento inicie antes do Mock Externo)
         max_retries = 5
         retry_delay_seconds = 3
         
@@ -102,14 +108,19 @@ class MSPagamento:
                 
                 if link:
                     print(f" [MS_Pagamento] Link recebido: {link}")
+                    # Publica o link (e dados associados) para o API Gateway
                     self._publish_message(
                         "link_pagamento",
-                        {"leilao_id": leilao_id, "link": link, "vencedor_id": vencedor_id}
+                        {
+                            "leilao_id": leilao_id, 
+                            "link": link, 
+                            "vencedor_id": vencedor_id, 
+                            "valor": valor
+                        }
                     )
-                    return # Sucesso, sair da função
+                    return
                 else:
                     print(" [MS_Pagamento] ERRO: Resposta do sistema externo não continha 'link_pagamento'")
-                    # Não adianta tentar de novo se a resposta veio errada
                     return 
 
             except httpx.RequestError as exc:
@@ -120,16 +131,18 @@ class MSPagamento:
                     print(f" [MS_Pagamento] FALHA TOTAL: Desistindo de gerar link para leilão {leilao_id}.")
             except Exception as e:
                 print(f" [MS_Pagamento] ERRO inesperado ao processar pagamento: {e}")
-                # Erro inesperado, provavelmente não adianta tentar de novo
                 return
 
     # --- Callback do Consumidor RabbitMQ ---
     def callback_leilao_vencedor(self, ch, method, properties, body):
-        """Consome 'leilao_vencedor' e inicia o processo de pagamento."""
+        """
+        Callback para 'leilao_vencedor'.
+        Inicia o processo de solicitação de pagamento.
+        """
         print(f" [MS_Pagamento] Recebido 'leilao_vencedor'")
         vencedor_data = json.loads(body)
         
-        # Se não houver vencedor, não faz nada
+        # Se não houver vencedor, apenas confirma a mensagem e não faz nada
         if vencedor_data.get("vencedor_id") is None:
             print(f" [MS_Pagamento] Leilão {vencedor_data['leilao_id']} terminou sem vencedor.")
             ch.basic_ack(delivery_tag=method.delivery_tag)
@@ -142,28 +155,28 @@ class MSPagamento:
 
     # --- Thread de Consumo ---
     def start_consuming(self):
-        """Inicia o consumo de mensagens do RabbitMQ em loop."""
+        """Inicia o consumo de mensagens do RabbitMQ em loop (em uma thread)."""
         print("--- [MS_Pagamento] Consumidor RabbitMQ iniciado em thread separada... ---")
         try:
-            # Declara o exchange
+            # Configura o consumo do exchange 'leilao_vencedor'
             self.channel.exchange_declare(
                 exchange="leilao_vencedor_exchange", 
                 exchange_type="fanout"
             )
-            # Cria uma fila exclusiva para o MS Pagamento
-            result = self.channel.queue_declare(queue="", exclusive=True)
+            result = self.channel.queue_declare(queue="", exclusive=True) # Fila exclusiva
             queue_name_vencedor = result.method.queue
             
-            # Faz o bind da fila ao exchange
             self.channel.queue_bind(
                 exchange="leilao_vencedor_exchange", 
                 queue=queue_name_vencedor
             )
-            # Consome da sua fila exclusiva
+            # Define o callback para esta fila
             self.channel.basic_consume(
                 queue=queue_name_vencedor, 
                 on_message_callback=self.callback_leilao_vencedor
             )
+            
+            # Inicia o loop de consumo
             self.channel.start_consuming()
         except KeyboardInterrupt:
             print("\n--- [MS_Pagamento] Consumidor RabbitMQ encerrando. ---")
@@ -191,19 +204,18 @@ def webhook_pagamento_recebido(payload: WebhookPayload):
     """
     print(f" [MS_Pagamento] WEBHOOK RECEBIDO: Transação {payload.transacao_id} - Status {payload.status}")
     
-    # Publica o status na fila 'status_pagamento'
+    # Publica o status na fila 'status_pagamento' para o API Gateway
     message = {
         "leilao_id": payload.leilao_id,
         "status": payload.status,
         "valor": payload.valor,
-        "vencedor_id": payload.cliente_id
+        "vencedor_id": payload.cliente_id # Repassa o ID do cliente
     }
     payment_service._publish_message("status_pagamento", message)
     
     return {"status": "ok", "message": "Notificação recebida."}
 
 # --- Inicialização ---
-
 if __name__ == "__main__":
     try:
         # Inicia o consumidor RabbitMQ em uma thread separada

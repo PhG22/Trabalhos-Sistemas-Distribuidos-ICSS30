@@ -1,10 +1,10 @@
 <!DOCTYPE html>
 <html lang="pt-br">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta charset="UTF-8"> <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Frontend Leilão (Trab 4)</title>
     <style>
+        /* --- Estilos Gerais --- */
         body { 
             font-family: sans-serif; 
             display: grid; 
@@ -25,13 +25,29 @@
         form button { padding: 10px; background-color: #007bff; color: white; border: none; cursor: pointer; transition: background-color 0.3s; }
         form button:hover { background-color: #0056b3; }
         
+        /* --- Estilos das Seções Específicas --- */
         #notificacoes-sse { background-color: #f4f4f4; max-height: 400px; overflow-y: auto; }
         #notificacoes-sse div { background-color: #fff; border: 1px solid #ddd; padding: 5px; margin-top: 5px; font-size: 0.9em; }
-        #leiloes-ativos ul { padding-left: 20px; }
+        #leiloes-ativos ul, #pagamentos-pendentes-lista ul { padding-left: 20px; }
 
+        /* Estilo para Pagamentos Pendentes */
+        #pagamentos-pendentes-lista li {
+            background-color: #fff;
+            border: 1px solid #ffc107;
+            padding: 10px;
+            margin-bottom: 8px;
+            border-radius: 4px;
+        }
+        #pagamentos-pendentes-lista a {
+            font-weight: bold;
+            color: #007bff;
+            text-decoration: none;
+        }
+
+        /* Estilos para o conteúdo principal e login */
         #login-section { grid-column: 1 / -1; background-color: #f9f9f9; }
         #main-content {
-            display: none; 
+            display: none; /* Começa escondido */
             grid-template-columns: 1fr 1fr; 
             gap: 20px; 
             grid-column: 1 / -1;
@@ -49,38 +65,23 @@
         }
         
         .doom-mode {
-            background-color: #1a1a1a; 
+            background-color: #1a1a1a;
             color: #e0e0e0;
         }
         .doom-mode div, .doom-mode #login-section {
             background-color: #111; 
             border-color: #800; 
         }
-        .doom-mode form button {
-            background-color: #b00; 
-        }
-        .doom-mode form button:hover {
-            background-color: #d00;
-        }
-        .doom-mode #logout-button {
-            background-color: #900; 
-        }
-        .doom-mode #logout-button:hover {
-            background-color: #b00;
-        }
-        .doom-mode #btn-clear-history {
-            background-color: #444; 
-        }
-        .doom-mode #btn-clear-history:hover {
-            background-color: #555;
-        }
-        .doom-mode #notificacoes-sse {
-            background-color: #222;
-        }
-        .doom-mode #notificacoes-sse div {
-            background-color: #333;
-            border-color: #600;
-        }
+        .doom-mode form button { background-color: #b00; }
+        .doom-mode form button:hover { background-color: #d00; }
+        .doom-mode #logout-button { background-color: #900; }
+        .doom-mode #logout-button:hover { background-color: #b00; }
+        .doom-mode #btn-clear-history { background-color: #444; }
+        .doom-mode #btn-clear-history:hover { background-color: #555; }
+        .doom-mode #notificacoes-sse { background-color: #222; }
+        .doom-mode #notificacoes-sse div { background-color: #333; border-color: #600; }
+        .doom-mode #pagamentos-pendentes-lista li { background-color: #333; border-color: #f44; }
+        .doom-mode #pagamentos-pendentes-lista a { color: #ff8a8a; }
         .doom-mode #user-display, 
         .doom-mode #sse-status[style*="color: green"] {
             color: #f44;
@@ -146,6 +147,12 @@
             </div>
             
             <hr>
+            <h2>Pagamentos Pendentes</h2>
+            <div id="pagamentos-pendentes-lista">
+                <ul></ul>
+            </div>
+            
+            <hr>
 
             <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px;">
                 <h2 style="margin: 0;">Notificações (SSE)</h2>
@@ -156,20 +163,26 @@
                 </div>
         </div>
     </div> <script>
+        // URL do ponto central de comunicação
         const API_GATEWAY_URL = 'http://localhost:5000';
         
+        // --- Variáveis de estado globais ---
         let MEU_USER_ID = null;
         let MEUS_INTERESSES = new Set();
         let NOTIFICATION_HISTORY = [];
-        let eventSource = null; 
+        let PENDING_PAYMENTS = {};
+        let eventSource = null; // Referência à conexão SSE
 
+        // --- Chaves do LocalStorage (para persistência) ---
         const USER_KEY = 'leilao_user_id';
+        // Funções para criar chaves dinâmicas baseadas no usuário logado
         const getInterestsKey = () => `leilao_interesses_${MEU_USER_ID}`;
         const getNotifKey = () => `leilao_notificacoes_${MEU_USER_ID}`;
+        const getPendPaymentsKey = () => `leilao_pagamentos_${MEU_USER_ID}`;
 
         // --- INICIALIZAÇÃO ---
         document.addEventListener('DOMContentLoaded', () => {
-            // Listeners
+            // Registra os listeners para todos os botões e formulários
             document.getElementById('btn-login').addEventListener('click', handleLogin);
             document.getElementById('logout-button').addEventListener('click', handleLogout);
             document.getElementById('form-criar-leilao').addEventListener('submit', criarLeilao);
@@ -182,15 +195,20 @@
             // Tenta fazer o "auto-login"
             const storedUser = localStorage.getItem(USER_KEY);
             if (storedUser) {
+                // Se encontrou um usuário no localStorage, loga automaticamente
                 MEU_USER_ID = storedUser;
                 showMainContent();
                 loadInterests();
                 loadNotificationHistory();
+                loadPendingPayments();
+                renderPendingPayments();
                 initSSE(MEU_USER_ID);
-                checkForEasterEgg(MEU_USER_ID);
+                checkForEasterEgg(MEU_USER_ID); 
             } else {
+                // Se não, mostra a tela de login
                 document.getElementById('login-section').style.display = 'block';
             }
+            // Consulta leilões ativos (mesmo sem estar logado)
             consultarLeiloes();
         });
         
@@ -202,40 +220,48 @@
                 return;
             }
             MEU_USER_ID = userId.trim();
-            localStorage.setItem(USER_KEY, MEU_USER_ID); 
+            localStorage.setItem(USER_KEY, MEU_USER_ID); // Salva o login no localStorage
 
+            // Exibe o conteúdo principal
             showMainContent();
+            // Carrega dados salvos (se houver)
             loadInterests(); 
             loadNotificationHistory(); 
+            loadPendingPayments();
+            renderPendingPayments();
+            // Inicia a conexão SSE
             initSSE(MEU_USER_ID);
-            
             checkForEasterEgg(MEU_USER_ID);
         }
 
         function handleLogout() {
-            localStorage.removeItem(USER_KEY);
+            localStorage.removeItem(USER_KEY); // Esquece o usuário
             
             if (eventSource) {
-                eventSource.close();
+                eventSource.close(); // Fecha a conexão SSE
                 logNotificacao("Desconectado.");
             }
             
+            // Reseta o estado global
             MEU_USER_ID = null;
             MEUS_INTERESSES = new Set();
             NOTIFICATION_HISTORY = [];
+            PENDING_PAYMENTS = {};
 
             document.body.classList.remove('doom-mode');
             const oldEgg = document.getElementById('easter-egg-iframe');
             if (oldEgg) {
                 oldEgg.remove();
             }
-            // ------------------------------------
 
+            // Esconde o app e mostra a tela de login
             document.getElementById('main-content').style.display = 'none';
             document.getElementById('login-section').style.display = 'block';
-            document.getElementById('notificacoes-sse').innerHTML = '';
+            document.getElementById('notificacoes-sse').innerHTML = ''; // Limpa logs da tela
+            document.getElementById('pagamentos-pendentes-lista').querySelector('ul').innerHTML = '';
         }
         
+        // Função auxiliar para mostrar o app
         function showMainContent() {
             document.getElementById('login-section').style.display = 'none';
             document.getElementById('main-content').style.display = 'grid';
@@ -274,12 +300,14 @@
 
         // --- LÓGICA DE SSE (Server-Sent Events) ---
         function initSSE(userId) {
+            // Conecta ao endpoint /eventos passando o user_id
             eventSource = new EventSource(`${API_GATEWAY_URL}/eventos?user_id=${userId}`);
             
             const statusEl = document.getElementById('sse-status');
             statusEl.textContent = `Conectando como '${userId}'...`;
             statusEl.style.color = '#888';
 
+            // Evento 'onopen': Chamado quando a conexão é estabelecida
             eventSource.onopen = (event) => {
                 logNotificacao("Conexão SSE estabelecida.");
                 document.getElementById('btn-registrar').disabled = false;
@@ -290,10 +318,11 @@
                     statusEl.style.color = 'green';
                 }
                 
+                // Re-registra os interesses salvos no gateway (caso seja um refresh)
                 reRegisterInterests();
             };
             
-            // Listeners de eventos
+            // Loop para registrar listeners para todos os nossos eventos customizados
             ['lance_validado', 'leilao_vencedor', 'lance_invalidado', 'link_pagamento', 'status_pagamento'].forEach(eventName => {
                 eventSource.addEventListener(eventName, (event) => {
                     const data = JSON.parse(event.data);
@@ -308,18 +337,29 @@
                         case 'lance_invalidado':
                             msg = `[LEILÃO ${data.leilao_id}] Seu lance foi inválido: ${data.motivo}`;
                             break;
+                        // O link de pagamento atualiza a seção "Pagamentos Pendentes"
                         case 'link_pagamento':
-                            msg = `[PAGAMENTO] Link para leilão ${data.leilao_id}: ${data.link}`;
+                            msg = `[PAGAMENTO] Você tem um novo pagamento pendente para o leilão ${data.leilao_id}.`;
+                            PENDING_PAYMENTS[data.leilao_id] = { 
+                                link: data.link, 
+                                valor: data.valor 
+                            };
+                            savePendingPayments();
+                            renderPendingPayments();
                             break;
+                        // O status de pagamento remove o item da seção "Pagamentos Pendentes"
                         case 'status_pagamento':
                             msg = `[PAGAMENTO] Status leilão ${data.leilao_id}: ${data.status.toUpperCase()}`;
+                            delete PENDING_PAYMENTS[data.leilao_id];
+                            savePendingPayments();
+                            renderPendingPayments();
                             break;
                     }
-                    logNotificacao(msg); 
+                    logNotificacao(msg); // Salva e exibe a notificação
                 });
             });
 
-            // Tratamento de erro
+            // Evento 'onerror': Chamado se a conexão SSE falhar
             eventSource.onerror = (err) => {
                 logNotificacao("Erro na conexão SSE. Tentando reconectar...");
                 console.error("EventSource failed:", err);
@@ -332,6 +372,7 @@
 
         // --- LÓGICA DE REST (fetch) ---
 
+        // Busca leilões ativos no gateway (que orquestra com MS Leilão e MS Lance)
         async function consultarLeiloes() {
             try {
                 const response = await fetch(`${API_GATEWAY_URL}/leiloes/ativos`);
@@ -345,7 +386,8 @@
                 } else {
                     leiloes.forEach(leilao => {
                         const item = document.createElement('li');
-                        item.textContent = `ID ${leilao.id}: ${leilao.descricao} (Mínimo: R$ ${leilao.valor_inicial})`;
+                        // Exibe o 'valor_atual' calculado pelo gateway
+                        item.textContent = `ID ${leilao.id}: ${leilao.descricao} (Lance Atual: R$ ${leilao.valor_atual.toFixed(2)})`;
                         lista.appendChild(item);
                     });
                 }
@@ -355,6 +397,7 @@
             }
         }
 
+        // Envia um novo leilão para o gateway
         async function criarLeilao(event) {
             event.preventDefault();
             const data = {
@@ -372,7 +415,7 @@
                 });
                 if (response.ok) {
                     alert('Leilão criado com sucesso!');
-                    consultarLeiloes();
+                    consultarLeiloes(); // Atualiza a lista
                 } else {
                     const erro = await response.json();
                     alert(`Falha ao criar leilão: ${erro.detail || 'Erro desconhecido'}`);
@@ -383,11 +426,12 @@
             }
         }
 
+        // Envia um novo lance para o gateway
         async function efetuarLance(event) {
             event.preventDefault();
             const data = {
                 leilao_id: parseInt(document.getElementById('lance-leilao-id').value),
-                user_id: MEU_USER_ID, 
+                user_id: MEU_USER_ID, // Usa o ID de login
                 valor: parseFloat(document.getElementById('lance-valor').value)
             };
 
@@ -410,6 +454,7 @@
             }
         }
         
+        // Registra interesse em um leilão
         async function registrarInteresse() {
             const leilaoId = document.getElementById('interesse-leilao-id').value;
             if (!leilaoId || !MEU_USER_ID) return;
@@ -418,8 +463,8 @@
                 const response = await fetch(`${API_GATEWAY_URL}/leiloes/${leilaoId}/registrar/${MEU_USER_ID}`, { method: 'POST' });
                 if (response.ok) {
                     alert(`Inscrito para notificações do leilão ${leilaoId}!`);
-                    MEUS_INTERESSES.add(leilaoId); 
-                    saveInterests(); 
+                    MEUS_INTERESSES.add(leilaoId); // Salva no estado
+                    saveInterests(); // Salva no localStorage
                 } else {
                     alert('Falha ao registrar interesse.');
                 }
@@ -428,6 +473,7 @@
             }
         }
 
+        // Cancela o interesse em um leilão
         async function cancelarInteresse() {
             const leilaoId = document.getElementById('interesse-leilao-id').value;
             if (!leilaoId || !MEU_USER_ID) return;
@@ -436,8 +482,8 @@
                 const response = await fetch(`${API_GATEWAY_URL}/leiloes/${leilaoId}/registrar/${MEU_USER_ID}`, { method: 'DELETE' });
                 if (response.ok) {
                     alert(`Interesse no leilão ${leilaoId} cancelado!`);
-                    MEUS_INTERESSES.delete(leilaoId); 
-                    saveInterests(); 
+                    MEUS_INTERESSES.delete(leilaoId); // Remove do estado
+                    saveInterests(); // Salva no localStorage
                 } else {
                     alert('Falha ao cancelar interesse.');
                 }
@@ -446,12 +492,14 @@
             }
         }
         
+        // Chamado no 'onopen' do SSE para re-sincronizar o gateway
         async function reRegisterInterests() {
             if (MEUS_INTERESSES.size === 0) return;
             
             logNotificacao(`Re-registrando ${MEUS_INTERESSES.size} leilões...`);
             for (const leilaoId of MEUS_INTERESSES) {
                 try {
+                    // Registra silenciosamente (sem 'alert')
                     await fetch(`${API_GATEWAY_URL}/leiloes/${leilaoId}/registrar/${MEU_USER_ID}`, { method: 'POST' });
                 } catch (error) {
                     logNotificacao(`Falha ao re-registrar leilão ${leilaoId}`);
@@ -479,7 +527,7 @@
 
         function saveNotificationHistory() {
             if (!MEU_USER_ID) return;
-            if (NOTIFICATION_HISTORY.length > 50) {
+            if (NOTIFICATION_HISTORY.length > 50) { // Limita o histórico
                 NOTIFICATION_HISTORY = NOTIFICATION_HISTORY.slice(NOTIFICATION_HISTORY.length - 50);
             }
             localStorage.setItem(getNotifKey(), JSON.stringify(NOTIFICATION_HISTORY));
@@ -493,6 +541,7 @@
                 NOTIFICATION_HISTORY = JSON.parse(storedData);
                 const logContainer = document.getElementById('notificacoes-sse');
                 logContainer.innerHTML = ''; 
+                // Recarrega o histórico na tela (na ordem correta)
                 NOTIFICATION_HISTORY.forEach(msg => displayNotification(msg, false));
             } else {
                 NOTIFICATION_HISTORY = [];
@@ -507,21 +556,61 @@
             document.getElementById('notificacoes-sse').innerHTML = '';
             logNotificacao("Histórico de notificações limpo.");
         }
+
+        function savePendingPayments() {
+            if (!MEU_USER_ID) return;
+            localStorage.setItem(getPendPaymentsKey(), JSON.stringify(PENDING_PAYMENTS));
+        }
+
+        function loadPendingPayments() {
+            if (!MEU_USER_ID) return;
+            const storedData = localStorage.getItem(getPendPaymentsKey());
+            if (storedData) {
+                PENDING_PAYMENTS = JSON.parse(storedData);
+            } else {
+                PENDING_PAYMENTS = {};
+            }
+        }
+        
+        // --- FUNÇÃO DE RENDERIZAÇÃO DE PAGAMENTO ---
+        function renderPendingPayments() {
+            const lista = document.getElementById('pagamentos-pendentes-lista').querySelector('ul');
+            lista.innerHTML = '';
+            
+            const leilaoIds = Object.keys(PENDING_PAYMENTS);
+            
+            if (leilaoIds.length === 0) {
+                lista.innerHTML = '<li>Nenhum pagamento pendente.</li>';
+                return;
+            }
+            
+            for (const leilaoId of leilaoIds) {
+                const pagamento = PENDING_PAYMENTS[leilaoId];
+                const item = document.createElement('li');
+                item.innerHTML = `
+                    Leilão ID ${leilaoId} (R$ ${pagamento.valor.toFixed(2)})<br>
+                    <a href="${pagamento.link}" target="_blank">Pagar Agora</a>
+                `;
+                lista.appendChild(item);
+            }
+        }
         
         // --- FUNÇÕES AUXILIARES DE DISPLAY ---
         
+        // Apenas exibe a mensagem na tela
         function displayNotification(mensagem, prepend = true) {
             const logContainer = document.getElementById('notificacoes-sse');
             const entry = document.createElement('div');
             entry.textContent = mensagem;
             
             if (prepend) {
-                logContainer.prepend(entry);
+                logContainer.prepend(entry); // Adiciona no topo (novo)
             } else {
-                logContainer.appendChild(entry);
+                logContainer.appendChild(entry); // Adiciona no fim (carregando)
             }
         }
 
+        // Função principal: exibe, salva no histórico e no localStorage
         function logNotificacao(mensagem) {
             const timestampedMsg = `[${new Date().toLocaleTimeString()}] ${mensagem}`;
             

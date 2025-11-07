@@ -6,14 +6,22 @@ import webbrowser
 def start_service_terminal(command, title="Serviço"):
     """
     Abre um novo terminal e executa um comando de serviço.
-    Adaptado da sua função original start_client_terminal.
+    Esta função detecta o sistema operacional (Windows, MacOS, Linux)
+    e usa o comando apropriado para iniciar um novo terminal.
+    
+    Args:
+        command (str): O script python a ser executado (ex: "api_gateway.py").
+        title (str): O título a ser exibido na janela do novo terminal.
     """
     full_command = f"python {command}"
     
     try:
         if sys.platform == "win32":
+            # No Windows, 'start' abre uma nova janela. 
+            # /k mantém o terminal aberto após o script (para vermos os logs)
             subprocess.Popen(f'start "{title}" cmd /k "{full_command}"', shell=True)
         elif sys.platform == "darwin": # MacOS
+            # Script AppleScript para dizer ao Terminal para abrir e rodar o comando
             script = f'tell app "Terminal" to do script "echo {title}; {full_command}"'
             subprocess.Popen(['osascript', '-e', script])
         else: # Linux
@@ -35,21 +43,26 @@ def start_service_terminal(command, title="Serviço"):
         print(f"Por favor, abra um novo terminal e execute: {full_command}")
 
 if __name__ == "__main__":
+    """
+    Ponto de entrada principal do script.
+    Define a lista de todos os serviços de back-end e os inicia,
+    um por um, em seus próprios terminais.
+    """
     print("--- Iniciando Microserviços do Sistema de Leilão (Trabalho 4) ---")
     
     # Lista de serviços para iniciar. 
-    # Cada um é um arquivo .py que roda seu próprio servidor FastAPI.
+    # A ordem é importante: o mock (8004) deve vir antes do MS Pagamento (8003).
     services_to_launch = [
         ("api_gateway.py", "API Gateway (Porta 5000)"),
         ("MS_leilao.py", "MS Leilão (Porta 8001)"),
         ("MS_lance.py", "MS Lance (Porta 8002)"),
         ("pagamento_externo.py", "MOCK Pagamento Externo (Porta 8004)"),
-        ("MS_pagamento.py", "MS Pagamento (Porta 8003)"),
+        ("MS_pagamento.py", "MS Pagamento (Porta 8003)"),           
     ]
 
     for service_script, title in services_to_launch:
         start_service_terminal(service_script, title)
-        time.sleep(1) # Pequeno atraso para evitar sobrecarga
+        time.sleep(1) # Pequeno atraso para evitar sobrecarga na inicialização
 
     print("-" * 70)
     print("[INFO] Todos os serviços de backend foram iniciados em seus próprios terminais.")
@@ -59,6 +72,7 @@ if __name__ == "__main__":
     client_url = "http://localhost:5000"
     print(f"\n[INFO] Abrindo o frontend do cliente em: {client_url}")
     try:
+        # Abre várias abas para simular múltiplos usuários
         webbrowser.open(client_url)
         webbrowser.open(client_url)
         webbrowser.open(client_url)
