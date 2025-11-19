@@ -1,0 +1,88 @@
+<!DOCTYPE html>
+<html lang="pt-br">
+<head>
+    <meta charset="UTF-8"> <title>Simular Pagamento</title>
+    <style>
+        /* Estilos simples e centralizados */
+        body { font-family: sans-serif; display: grid; place-items: center; min-height: 100vh; background-color: #f9f9f9; }
+        #caixa-pagamento { 
+            width: 400px; 
+            background: #fff; 
+            border-radius: 8px; 
+            box-shadow: 0 4px 10px rgba(0,0,0,0.1); 
+            padding: 30px; 
+            border-top: 5px solid #007bff;
+        }
+        h1 { margin-top: 0; text-align: center; color: #333; }
+        p { margin: 10px 0; font-size: 1.1em; }
+        p strong { color: #555; min-width: 100px; display: inline-block; }
+        
+        .botoes { margin-top: 25px; display: grid; grid-template-columns: 1fr 1fr; gap: 15px; }
+        .botoes button { 
+            border: none; 
+            padding: 15px; 
+            cursor: pointer; 
+            border-radius: 5px; 
+            color: white; 
+            font-size: 1.1em;
+            transition: transform 0.2s;
+        }
+        .botoes button:hover { transform: scale(1.05); }
+        .botoes button:disabled { background-color: #ccc; cursor: not-allowed; }
+        #btn-aprovar { background-color: #28a745; }
+        #btn-recusar { background-color: #dc3545; }
+        
+        #feedback { margin-top: 20px; text-align: center; font-size: 1.1em; font-weight: bold; }
+    </style>
+</head>
+<body>
+    <div id="caixa-pagamento">
+        <h1>Simular Pagamento</h1>
+        <p><strong>Cliente:</strong> {{CLIENTE_ID}}</p>
+        <p><strong>Leilão ID:</strong> {{LEILAO_ID}}</p>
+        <p><strong>Valor:</strong> R$ {{VALOR}}</p>
+        <p><strong>Transação:</strong> {{TRANSACAO_ID}}</p>
+        
+        <div class="botoes">
+            <button id="btn-aprovar" onclick="processar('{{TRANSACAO_ID}}', 'aprovado')">Aprovar</button>
+            <button id="btn-recusar" onclick="processar('{{TRANSACAO_ID}}', 'recusado')">Recusar</button>
+        </div>
+        
+        <div id="feedback"></div>
+    </div>
+
+    <script>
+        /**
+         * Envia a decisão (aprovar/recusar) de volta para o servidor 
+         * do sistema de pagamento externo via POST REST.
+         */
+        async function processar(transacao_id, status) {
+            // Desabilita botões para evitar clique duplo
+            document.getElementById('btn-aprovar').disabled = true;
+            document.getElementById('btn-recusar').disabled = true;
+            const feedback = document.getElementById('feedback');
+            feedback.textContent = 'Processando...';
+
+            try {
+                // Chama o endpoint de processamento no mesmo servidor (pagamento_externo.py)
+                const response = await fetch(`/processar_pagamento/${transacao_id}?status=${status}`, {
+                    method: 'POST'
+                });
+                
+                if (response.ok) {
+                    feedback.textContent = `Pagamento ${status} com sucesso! Você pode fechar esta aba.`;
+                    feedback.style.color = (status === 'aprovado' ? 'green' : 'red');
+                } else {
+                    throw new Error('Falha no processamento.');
+                }
+            } catch (e) {
+                feedback.textContent = 'Erro ao processar. Tente recarregar a página.';
+                feedback.style.color = 'red';
+                // Reabilita botões em caso de falha
+                document.getElementById('btn-aprovar').disabled = false;
+                document.getElementById('btn-recusar').disabled = false;
+            }
+        }
+    </script>
+</body>
+</html>
