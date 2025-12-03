@@ -7,8 +7,8 @@ from datetime import datetime, timedelta
 from typing import List
 import queue
 
-import leilao_pb2
-import leilao_pb2_grpc
+import leilao_pb2, leilao_pb2_grpc
+import lance_pb2_grpc
 
 # Modelo interno simplificado
 class LeilaoInterno:
@@ -118,7 +118,7 @@ class AuctionService(leilao_pb2_grpc.AuctionServiceServicer):
         """
         # Canal persistente para falar com o MS Lance
         channel_lance = grpc.insecure_channel('localhost:8002')
-        stub_lance = leilao_pb2_grpc.LanceServiceStub(channel_lance)
+        stub_lance = lance_pb2_grpc.LanceServiceStub(channel_lance)
 
         print("--- [MS Leilão] Monitor iniciado ---")
         while True:

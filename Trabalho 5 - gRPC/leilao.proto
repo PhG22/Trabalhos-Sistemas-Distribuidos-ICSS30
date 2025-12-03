@@ -15,26 +15,6 @@ message LeilaoData {
     float valor_atual = 7;
 }
 
-// Dados necessários para efetuar um lance.
-message LanceData {
-    int32 leilao_id = 1;
-    string user_id = 2;
-    float valor = 3;
-}
-
-// Resposta padrão para tentativas de lance.
-message LanceResponse {
-    string status = 1;  // "ok" ou "erro"
-    string message = 2; // Detalhe do erro ou sucesso
-}
-
-// Dados para iniciar um processo de pagamento.
-message PaymentData {
-    int32 leilao_id = 1;
-    string vencedor_id = 2;
-    float valor = 3;
-}
-
 // Mensagem genérica para eventos em tempo real (SSE).
 // Substitui o JSON livre que antes trafegava no RabbitMQ.
 message Evento {
@@ -54,30 +34,5 @@ service AuctionService {
     rpc GetLeiloesAtivos (Empty) returns (stream LeilaoData);
     
     // Mantém um canal aberto enviando eventos do MS Leilão para o Gateway.
-    rpc SubscribeEventos (Empty) returns (stream Evento);
-}
-
-service LanceService {
-    // Processa um lance síncrono.
-    rpc ProcessarLance (LanceData) returns (LanceResponse);
-    
-    // Retorna o estado atual dos lances para a listagem inicial.
-    rpc GetLancesAtuais (Empty) returns (stream LeilaoData);
-    
-    // --- Comunicação Inter-serviços ---
-    
-    // O MS Leilão chama estes métodos para avisar o MS Lance sobre mudanças de estado.
-    rpc NotificarInicioLeilao (LeilaoData) returns (Empty);
-    rpc NotificarFimLeilao (LeilaoData) returns (Empty);
-    
-    // Canal de eventos para o Gateway (lances validados/inválidos).
-    rpc SubscribeEventos (Empty) returns (stream Evento);
-}
-
-service PaymentService {
-    // Chamado diretamente pelo MS Lance quando um vencedor é determinado.
-    rpc ProcessarPagamento (PaymentData) returns (Empty);
-    
-    // Canal de eventos para o Gateway (link de pagamento, status).
     rpc SubscribeEventos (Empty) returns (stream Evento);
 }

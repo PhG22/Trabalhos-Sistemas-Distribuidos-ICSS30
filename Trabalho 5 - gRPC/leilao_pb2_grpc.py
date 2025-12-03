@@ -26,7 +26,7 @@ if _version_not_supported:
 
 
 class AuctionServiceStub(object):
-    """--- Serviços ---
+    """--- Definição dos Serviços (Interfaces gRPC) ---
 
     """
 
@@ -54,24 +54,26 @@ class AuctionServiceStub(object):
 
 
 class AuctionServiceServicer(object):
-    """--- Serviços ---
+    """--- Definição dos Serviços (Interfaces gRPC) ---
 
     """
 
     def CriarLeilao(self, request, context):
-        """Missing associated documentation comment in .proto file."""
+        """Cria um leilão e retorna seus dados.
+        """
         context.set_code(grpc.StatusCode.UNIMPLEMENTED)
         context.set_details('Method not implemented!')
         raise NotImplementedError('Method not implemented!')
 
     def GetLeiloesAtivos(self, request, context):
-        """Missing associated documentation comment in .proto file."""
+        """Retorna um fluxo (stream) de leilões ativos (Server Streaming).
+        """
         context.set_code(grpc.StatusCode.UNIMPLEMENTED)
         context.set_details('Method not implemented!')
         raise NotImplementedError('Method not implemented!')
 
     def SubscribeEventos(self, request, context):
-        """Stream para o Gateway ouvir eventos (Iniciado/Finalizado)
+        """Mantém um canal aberto enviando eventos do MS Leilão para o Gateway.
         """
         context.set_code(grpc.StatusCode.UNIMPLEMENTED)
         context.set_details('Method not implemented!')
@@ -104,7 +106,7 @@ def add_AuctionServiceServicer_to_server(servicer, server):
 
  # This class is part of an EXPERIMENTAL API.
 class AuctionService(object):
-    """--- Serviços ---
+    """--- Definição dos Serviços (Interfaces gRPC) ---
 
     """
 
@@ -177,370 +179,6 @@ class AuctionService(object):
             request,
             target,
             '/leilao.AuctionService/SubscribeEventos',
-            leilao__pb2.Empty.SerializeToString,
-            leilao__pb2.Evento.FromString,
-            options,
-            channel_credentials,
-            insecure,
-            call_credentials,
-            compression,
-            wait_for_ready,
-            timeout,
-            metadata,
-            _registered_method=True)
-
-
-class LanceServiceStub(object):
-    """Missing associated documentation comment in .proto file."""
-
-    def __init__(self, channel):
-        """Constructor.
-
-        Args:
-            channel: A grpc.Channel.
-        """
-        self.ProcessarLance = channel.unary_unary(
-                '/leilao.LanceService/ProcessarLance',
-                request_serializer=leilao__pb2.LanceData.SerializeToString,
-                response_deserializer=leilao__pb2.LanceResponse.FromString,
-                _registered_method=True)
-        self.GetLancesAtuais = channel.unary_stream(
-                '/leilao.LanceService/GetLancesAtuais',
-                request_serializer=leilao__pb2.Empty.SerializeToString,
-                response_deserializer=leilao__pb2.LeilaoData.FromString,
-                _registered_method=True)
-        self.NotificarInicioLeilao = channel.unary_unary(
-                '/leilao.LanceService/NotificarInicioLeilao',
-                request_serializer=leilao__pb2.LeilaoData.SerializeToString,
-                response_deserializer=leilao__pb2.Empty.FromString,
-                _registered_method=True)
-        self.NotificarFimLeilao = channel.unary_unary(
-                '/leilao.LanceService/NotificarFimLeilao',
-                request_serializer=leilao__pb2.LeilaoData.SerializeToString,
-                response_deserializer=leilao__pb2.Empty.FromString,
-                _registered_method=True)
-        self.SubscribeEventos = channel.unary_stream(
-                '/leilao.LanceService/SubscribeEventos',
-                request_serializer=leilao__pb2.Empty.SerializeToString,
-                response_deserializer=leilao__pb2.Evento.FromString,
-                _registered_method=True)
-
-
-class LanceServiceServicer(object):
-    """Missing associated documentation comment in .proto file."""
-
-    def ProcessarLance(self, request, context):
-        """Missing associated documentation comment in .proto file."""
-        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
-        context.set_details('Method not implemented!')
-        raise NotImplementedError('Method not implemented!')
-
-    def GetLancesAtuais(self, request, context):
-        """Retorna lista simplificada com valor atual
-        """
-        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
-        context.set_details('Method not implemented!')
-        raise NotImplementedError('Method not implemented!')
-
-    def NotificarInicioLeilao(self, request, context):
-        """O MS Leilão avisa o MS Lance que iniciou ou acabou
-        """
-        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
-        context.set_details('Method not implemented!')
-        raise NotImplementedError('Method not implemented!')
-
-    def NotificarFimLeilao(self, request, context):
-        """Missing associated documentation comment in .proto file."""
-        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
-        context.set_details('Method not implemented!')
-        raise NotImplementedError('Method not implemented!')
-
-    def SubscribeEventos(self, request, context):
-        """Stream para o Gateway ouvir eventos (Validado/Inválido/Vencedor)
-        """
-        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
-        context.set_details('Method not implemented!')
-        raise NotImplementedError('Method not implemented!')
-
-
-def add_LanceServiceServicer_to_server(servicer, server):
-    rpc_method_handlers = {
-            'ProcessarLance': grpc.unary_unary_rpc_method_handler(
-                    servicer.ProcessarLance,
-                    request_deserializer=leilao__pb2.LanceData.FromString,
-                    response_serializer=leilao__pb2.LanceResponse.SerializeToString,
-            ),
-            'GetLancesAtuais': grpc.unary_stream_rpc_method_handler(
-                    servicer.GetLancesAtuais,
-                    request_deserializer=leilao__pb2.Empty.FromString,
-                    response_serializer=leilao__pb2.LeilaoData.SerializeToString,
-            ),
-            'NotificarInicioLeilao': grpc.unary_unary_rpc_method_handler(
-                    servicer.NotificarInicioLeilao,
-                    request_deserializer=leilao__pb2.LeilaoData.FromString,
-                    response_serializer=leilao__pb2.Empty.SerializeToString,
-            ),
-            'NotificarFimLeilao': grpc.unary_unary_rpc_method_handler(
-                    servicer.NotificarFimLeilao,
-                    request_deserializer=leilao__pb2.LeilaoData.FromString,
-                    response_serializer=leilao__pb2.Empty.SerializeToString,
-            ),
-            'SubscribeEventos': grpc.unary_stream_rpc_method_handler(
-                    servicer.SubscribeEventos,
-                    request_deserializer=leilao__pb2.Empty.FromString,
-                    response_serializer=leilao__pb2.Evento.SerializeToString,
-            ),
-    }
-    generic_handler = grpc.method_handlers_generic_handler(
-            'leilao.LanceService', rpc_method_handlers)
-    server.add_generic_rpc_handlers((generic_handler,))
-    server.add_registered_method_handlers('leilao.LanceService', rpc_method_handlers)
-
-
- # This class is part of an EXPERIMENTAL API.
-class LanceService(object):
-    """Missing associated documentation comment in .proto file."""
-
-    @staticmethod
-    def ProcessarLance(request,
-            target,
-            options=(),
-            channel_credentials=None,
-            call_credentials=None,
-            insecure=False,
-            compression=None,
-            wait_for_ready=None,
-            timeout=None,
-            metadata=None):
-        return grpc.experimental.unary_unary(
-            request,
-            target,
-            '/leilao.LanceService/ProcessarLance',
-            leilao__pb2.LanceData.SerializeToString,
-            leilao__pb2.LanceResponse.FromString,
-            options,
-            channel_credentials,
-            insecure,
-            call_credentials,
-            compression,
-            wait_for_ready,
-            timeout,
-            metadata,
-            _registered_method=True)
-
-    @staticmethod
-    def GetLancesAtuais(request,
-            target,
-            options=(),
-            channel_credentials=None,
-            call_credentials=None,
-            insecure=False,
-            compression=None,
-            wait_for_ready=None,
-            timeout=None,
-            metadata=None):
-        return grpc.experimental.unary_stream(
-            request,
-            target,
-            '/leilao.LanceService/GetLancesAtuais',
-            leilao__pb2.Empty.SerializeToString,
-            leilao__pb2.LeilaoData.FromString,
-            options,
-            channel_credentials,
-            insecure,
-            call_credentials,
-            compression,
-            wait_for_ready,
-            timeout,
-            metadata,
-            _registered_method=True)
-
-    @staticmethod
-    def NotificarInicioLeilao(request,
-            target,
-            options=(),
-            channel_credentials=None,
-            call_credentials=None,
-            insecure=False,
-            compression=None,
-            wait_for_ready=None,
-            timeout=None,
-            metadata=None):
-        return grpc.experimental.unary_unary(
-            request,
-            target,
-            '/leilao.LanceService/NotificarInicioLeilao',
-            leilao__pb2.LeilaoData.SerializeToString,
-            leilao__pb2.Empty.FromString,
-            options,
-            channel_credentials,
-            insecure,
-            call_credentials,
-            compression,
-            wait_for_ready,
-            timeout,
-            metadata,
-            _registered_method=True)
-
-    @staticmethod
-    def NotificarFimLeilao(request,
-            target,
-            options=(),
-            channel_credentials=None,
-            call_credentials=None,
-            insecure=False,
-            compression=None,
-            wait_for_ready=None,
-            timeout=None,
-            metadata=None):
-        return grpc.experimental.unary_unary(
-            request,
-            target,
-            '/leilao.LanceService/NotificarFimLeilao',
-            leilao__pb2.LeilaoData.SerializeToString,
-            leilao__pb2.Empty.FromString,
-            options,
-            channel_credentials,
-            insecure,
-            call_credentials,
-            compression,
-            wait_for_ready,
-            timeout,
-            metadata,
-            _registered_method=True)
-
-    @staticmethod
-    def SubscribeEventos(request,
-            target,
-            options=(),
-            channel_credentials=None,
-            call_credentials=None,
-            insecure=False,
-            compression=None,
-            wait_for_ready=None,
-            timeout=None,
-            metadata=None):
-        return grpc.experimental.unary_stream(
-            request,
-            target,
-            '/leilao.LanceService/SubscribeEventos',
-            leilao__pb2.Empty.SerializeToString,
-            leilao__pb2.Evento.FromString,
-            options,
-            channel_credentials,
-            insecure,
-            call_credentials,
-            compression,
-            wait_for_ready,
-            timeout,
-            metadata,
-            _registered_method=True)
-
-
-class PaymentServiceStub(object):
-    """Missing associated documentation comment in .proto file."""
-
-    def __init__(self, channel):
-        """Constructor.
-
-        Args:
-            channel: A grpc.Channel.
-        """
-        self.ProcessarPagamento = channel.unary_unary(
-                '/leilao.PaymentService/ProcessarPagamento',
-                request_serializer=leilao__pb2.PaymentData.SerializeToString,
-                response_deserializer=leilao__pb2.Empty.FromString,
-                _registered_method=True)
-        self.SubscribeEventos = channel.unary_stream(
-                '/leilao.PaymentService/SubscribeEventos',
-                request_serializer=leilao__pb2.Empty.SerializeToString,
-                response_deserializer=leilao__pb2.Evento.FromString,
-                _registered_method=True)
-
-
-class PaymentServiceServicer(object):
-    """Missing associated documentation comment in .proto file."""
-
-    def ProcessarPagamento(self, request, context):
-        """Chamado diretamente pelo MS Lance quando há vencedor
-        """
-        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
-        context.set_details('Method not implemented!')
-        raise NotImplementedError('Method not implemented!')
-
-    def SubscribeEventos(self, request, context):
-        """Stream para o Gateway ouvir eventos (Link/Status)
-        """
-        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
-        context.set_details('Method not implemented!')
-        raise NotImplementedError('Method not implemented!')
-
-
-def add_PaymentServiceServicer_to_server(servicer, server):
-    rpc_method_handlers = {
-            'ProcessarPagamento': grpc.unary_unary_rpc_method_handler(
-                    servicer.ProcessarPagamento,
-                    request_deserializer=leilao__pb2.PaymentData.FromString,
-                    response_serializer=leilao__pb2.Empty.SerializeToString,
-            ),
-            'SubscribeEventos': grpc.unary_stream_rpc_method_handler(
-                    servicer.SubscribeEventos,
-                    request_deserializer=leilao__pb2.Empty.FromString,
-                    response_serializer=leilao__pb2.Evento.SerializeToString,
-            ),
-    }
-    generic_handler = grpc.method_handlers_generic_handler(
-            'leilao.PaymentService', rpc_method_handlers)
-    server.add_generic_rpc_handlers((generic_handler,))
-    server.add_registered_method_handlers('leilao.PaymentService', rpc_method_handlers)
-
-
- # This class is part of an EXPERIMENTAL API.
-class PaymentService(object):
-    """Missing associated documentation comment in .proto file."""
-
-    @staticmethod
-    def ProcessarPagamento(request,
-            target,
-            options=(),
-            channel_credentials=None,
-            call_credentials=None,
-            insecure=False,
-            compression=None,
-            wait_for_ready=None,
-            timeout=None,
-            metadata=None):
-        return grpc.experimental.unary_unary(
-            request,
-            target,
-            '/leilao.PaymentService/ProcessarPagamento',
-            leilao__pb2.PaymentData.SerializeToString,
-            leilao__pb2.Empty.FromString,
-            options,
-            channel_credentials,
-            insecure,
-            call_credentials,
-            compression,
-            wait_for_ready,
-            timeout,
-            metadata,
-            _registered_method=True)
-
-    @staticmethod
-    def SubscribeEventos(request,
-            target,
-            options=(),
-            channel_credentials=None,
-            call_credentials=None,
-            insecure=False,
-            compression=None,
-            wait_for_ready=None,
-            timeout=None,
-            metadata=None):
-        return grpc.experimental.unary_stream(
-            request,
-            target,
-            '/leilao.PaymentService/SubscribeEventos',
             leilao__pb2.Empty.SerializeToString,
             leilao__pb2.Evento.FromString,
             options,

@@ -11,8 +11,9 @@ from sse_starlette.sse import EventSourceResponse
 from typing import List, Dict
 from contextlib import asynccontextmanager
 
-import leilao_pb2
-import leilao_pb2_grpc
+import leilao_pb2, leilao_pb2_grpc
+import lance_pb2, lance_pb2_grpc
+import pagamento_pb2_grpc
 
 # Endereços dos servidores gRPC
 HOST_LEILAO = 'localhost:8001'
@@ -176,12 +177,12 @@ def start_grpc_consumers(loop):
 
     # Listener MS Lance
     chan_lance = grpc.insecure_channel(HOST_LANCE)
-    stub_lance = leilao_pb2_grpc.LanceServiceStub(chan_lance)
+    stub_lance = lance_pb2_grpc.LanceServiceStub(chan_lance)
     threading.Thread(target=listen_to_grpc_stream, args=(stub_lance.SubscribeEventos, "MS Lance", loop), daemon=True).start()
 
     # Listener MS Pagamento
     chan_pag = grpc.insecure_channel(HOST_PAGAMENTO)
-    stub_pag = leilao_pb2_grpc.PaymentServiceStub(chan_pag)
+    stub_pag = pagamento_pb2_grpc.PaymentServiceStub(chan_pag)
     threading.Thread(target=listen_to_grpc_stream, args=(stub_pag.SubscribeEventos, "MS Pagamento", loop), daemon=True).start()
 
 # --- Ciclo de Vida ---
@@ -249,7 +250,7 @@ async def consultar_leiloes_ativos():
         
         # Chamada gRPC para MS Lance
         with grpc.insecure_channel(HOST_LANCE) as chan_lance:
-            stub_lance = leilao_pb2_grpc.LanceServiceStub(chan_lance)
+            stub_lance = lance_pb2_grpc.LanceServiceStub(chan_lance)
             lances_proto = list(stub_lance.GetLancesAtuais(leilao_pb2.Empty()))
         
         # Agregação de dados
@@ -298,8 +299,8 @@ async def efetuar_lance(request: Request):
     data = await request.json()
     try:
         with grpc.insecure_channel(HOST_LANCE) as channel:
-            stub = leilao_pb2_grpc.LanceServiceStub(channel)
-            req = leilao_pb2.LanceData(
+            stub = lance_pb2_grpc.LanceServiceStub(channel)
+            req = lance_pb2.LanceData(
                 leilao_id=data['leilao_id'], 
                 user_id=data['user_id'], 
                 valor=data['valor']

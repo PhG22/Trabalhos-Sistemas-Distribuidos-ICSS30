@@ -1,0 +1,45 @@
+syntax = "proto3";
+
+package lance;
+
+// Import do arquivo onde LeilaoData está definido
+import "leilao.proto";
+
+// Dados necessários para efetuar um lance.
+message LanceData {
+    int32 leilao_id = 1;
+    string user_id = 2;
+    float valor = 3;
+}
+
+// Resposta padrão para tentativas de lance.
+message LanceResponse {
+    string status = 1;  // "ok" ou "erro"
+    string message = 2; // Detalhe do erro ou sucesso
+}
+
+// Mensagem genérica para eventos em tempo real (SSE).
+// Substitui o JSON livre que antes trafegava no RabbitMQ.
+message Evento {
+    string tipo = 1; // "leilao_iniciado", "lance_validado"
+    string payload_json = 2; // Conteúdo do evento serializado em JSON
+}
+
+message Empty {}
+
+service LanceService {
+    // Processa um lance síncrono.
+    rpc ProcessarLance (LanceData) returns (LanceResponse);
+    
+    // Retorna o estado atual dos lances para a listagem inicial.
+    rpc GetLancesAtuais (Empty) returns (stream leilao.LeilaoData);
+    
+    // --- Comunicação Inter-serviços ---
+    
+    // O MS Leilão chama estes métodos para avisar o MS Lance sobre mudanças de estado.
+    rpc NotificarInicioLeilao (leilao.LeilaoData) returns (Empty);
+    rpc NotificarFimLeilao (leilao.LeilaoData) returns (Empty);
+    
+    // Canal de eventos para o Gateway (lances validados/inválidos).
+    rpc SubscribeEventos (Empty) returns (stream Evento);
+}

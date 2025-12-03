@@ -1,0 +1,27 @@
+syntax = "proto3";
+
+package pagamento;
+
+// Dados para iniciar um processo de pagamento.
+message PaymentData {
+    int32 leilao_id = 1;
+    string vencedor_id = 2;
+    float valor = 3;
+}
+
+// Mensagem genérica para eventos em tempo real (SSE).
+// Substitui o JSON livre que antes trafegava no RabbitMQ.
+message Evento {
+    string tipo = 1; // "leilao_iniciado", "lance_validado"
+    string payload_json = 2; // Conteúdo do evento serializado em JSON
+}
+
+message Empty {}
+
+service PaymentService {
+    // Chamado diretamente pelo MS Lance quando um vencedor é determinado.
+    rpc ProcessarPagamento (PaymentData) returns (Empty);
+    
+    // Canal de eventos para o Gateway (link de pagamento, status).
+    rpc SubscribeEventos (Empty) returns (stream Evento);
+}

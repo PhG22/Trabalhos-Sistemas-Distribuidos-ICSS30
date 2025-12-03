@@ -8,8 +8,7 @@ from fastapi import FastAPI
 from pydantic import BaseModel
 import queue
 
-import leilao_pb2
-import leilao_pb2_grpc
+import pagamento_pb2, pagamento_pb2_grpc
 
 # Configurações de Portas
 PORTA_GRPC = 8003
@@ -33,7 +32,7 @@ queue_lock = threading.Lock()
 
 def broadcast_grpc_event(tipo, payload):
     """Função auxiliar usada pelo FastAPI para enviar eventos aos clientes gRPC (Gateway)."""
-    msg = leilao_pb2.Evento(tipo=tipo, payload_json=json.dumps(payload))
+    msg = pagamento_pb2.Evento(tipo=tipo, payload_json=json.dumps(payload))
     with queue_lock:
         dead_queues = set()
         for q in event_queues:
@@ -63,7 +62,7 @@ def webhook(payload: WebhookPayload):
     return {"status": "ok"}
 
 # --- Serviço gRPC (Comunicação Interna) ---
-class PaymentService(leilao_pb2_grpc.PaymentServiceServicer):
+class PaymentService(pagamento_pb2_grpc.PaymentServiceServicer):
     
     def SubscribeEventos(self, request, context):
         """Stream de eventos para o Gateway."""
@@ -118,12 +117,12 @@ class PaymentService(leilao_pb2_grpc.PaymentServiceServicer):
         except Exception as e:
             print(f"[Erro] Exceção ao chamar sistema externo: {e}")
         
-        return leilao_pb2.Empty()
+        return pagamento_pb2.Empty()
 
 def run_grpc():
     """Inicia o servidor gRPC."""
     server = grpc.server(futures.ThreadPoolExecutor(max_workers=5))
-    leilao_pb2_grpc.add_PaymentServiceServicer_to_server(PaymentService(), server)
+    pagamento_pb2_grpc.add_PaymentServiceServicer_to_server(PaymentService(), server)
     server.add_insecure_port(f'[::]:{PORTA_GRPC}')
     print(f"--- [MS Pagamento] gRPC rodando na porta {PORTA_GRPC} ---")
     server.start()
